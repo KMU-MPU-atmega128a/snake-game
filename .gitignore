@@ -8,7 +8,9 @@
 *.lst
 *.mp
 *.aws
+*.aps
+*.prj
+*.layout
+*.cbp
 
 .objs/
-
-hidden-catch
