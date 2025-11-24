@@ -1,0 +1,103 @@
+                        .module my128.c
+                        .area text(rom, con, rel)
+ 0000                   .dbfile C:\MPU_2025_2\snake-game\utils\my128.c
+                        .area text(rom, con, rel)
+ 0000                   .dbfile C:\MPU_2025_2\snake-game\utils\my128.c
+ 0000                   .dbfunc e delay_ms _delay_ms#Fvj fV 3
+ 0000           ;              i -> R20,R21
+ 0000           ;              j -> R22,R23
+ 0000           ;              m -> R16,R17
+                        .even
+ 0000           _delay_ms#Fvj::
+ 0000 0E940000          xcall push_xgsetF000
+ 0004                   .dbblock 3
+ 0004                   .dbline 6
+ 0004 4427              clr R20
+ 0006 5527              clr R21
+ 0008 0CC0              xjmp L5
+ 000A           L2:
+ 000A                   .dbline 7
+ 000A 6627              clr R22
+ 000C 7727              clr R23
+ 000E 02C0              xjmp L9
+ 0010           L6:
+ 0010           L7:
+ 0010                   .dbline 7
+ 0010 6F5F              subi R22,255  ; offset = 1
+ 0012 7F4F              sbci R23,255
+ 0014           L9:
+ 0014                   .dbline 7
+ 0014 82E5              ldi R24,2130
+ 0016 98E0              ldi R25,8
+ 0018 6817              cp R22,R24
+ 001A 7907              cpc R23,R25
+ 001C C8F3              brlo L6
+ 001E           X0:
+ 001E           L3:
+ 001E                   .dbline 6
+ 001E 4F5F              subi R20,255  ; offset = 1
+ 0020 5F4F              sbci R21,255
+ 0022           L5:
+ 0022                   .dbline 6
+ 0022 4017              cp R20,R16
+ 0024 5107              cpc R21,R17
+ 0026 88F3              brlo L2
+ 0028           X1:
+ 0028                   .dbblkend 9
+ 0028           L1:
+ 0028 0C940000          xjmp pop_xgsetF000
+ 002C 0895              ret
+ 002E                   .dbfuncend
+ 002E                   .dbsym r i 20 i
+ 002E                   .dbsym r j 22 i
+ 002E                   .dbsym r m 16 i
+ 002E                   .dbstacksize 0
+ 002E                   .dbfunc e delay_us _delay_us#Fvj fV 11
+ 002E           ;              i -> R20,R21
+ 002E           ;              j -> R22,R23
+ 002E           ;              u -> R16,R17
+                        .even
+ 002E           _delay_us#Fvj::
+ 002E 0E940000          xcall push_xgsetF000
+ 0032                   .dbblock 11
+ 0032                   .dbline 14
+ 0032 4427              clr R20
+ 0034 5527              clr R21
+ 0036 0CC0              xjmp L14
+ 0038           L11:
+ 0038                   .dbline 15
+ 0038 6627              clr R22
+ 003A 7727              clr R23
+ 003C 02C0              xjmp L18
+ 003E           L15:
+ 003E           L16:
+ 003E                   .dbline 15
+ 003E 6F5F              subi R22,255  ; offset = 1
+ 0040 7F4F              sbci R23,255
+ 0042           L18:
+ 0042                   .dbline 15
+ 0042 82E0              ldi R24,2
+ 0044 90E0              ldi R25,0
+ 0046 6817              cp R22,R24
+ 0048 7907              cpc R23,R25
+ 004A C8F3              brlo L15
+ 004C           X2:
+ 004C           L12:
+ 004C                   .dbline 14
+ 004C 4F5F              subi R20,255  ; offset = 1
+ 004E 5F4F              sbci R21,255
+ 0050           L14:
+ 0050                   .dbline 14
+ 0050 4017              cp R20,R16
+ 0052 5107              cpc R21,R17
+ 0054 88F3              brlo L11
+ 0056           X3:
+ 0056                   .dbblkend 17
+ 0056           L10:
+ 0056 0C940000          xjmp pop_xgsetF000
+ 005A 0895              ret
+ 005C                   .dbfuncend
+ 005C                   .dbsym r i 20 i
+ 005C                   .dbsym r j 22 i
+ 005C                   .dbsym r u 16 i
+ 005C                   .dbstacksize 0

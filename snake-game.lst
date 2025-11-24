@@ -1,0 +1,574 @@
+NOTE: Code bytes are displayed in order matching the disassembly format in AVR documentation.
+  For example, 'CALL 2B16' (example only, only labels should normally be used) is displayed as
+  0x940E2B16 rather than in little endian byte order.
+
+Interrupt Vectors
+
+Program Code (text area)
+_exit:
+    000AA CFFF      RJMP	_exit
+FILE: C:\MPU_2025_2\snake-game\main.c
+(0001) #include <iom128v.h>
+(0002) #include "my128.h"
+(0003) #include "lcd.h"
+(0004) #include "intro.h"
+(0005) 
+(0006) Byte flag = 0;  // 0: default, pause / 1: playing
+(0007) Byte snake = 5; // ¹ìÀÇ ±æÀÌ, Á¡¼ö·Î È°¿ë
+(0008) 
+(0009) Byte x_max = 50;
+(0010) Byte y_max = 15;
+(0011) Byte pixel_x = 0;   // 0~49, °¡·Î pixel (10Ä­*5pixel)
+(0012) Byte pixel_y = 0;   // 0~15, ¼¼·Î pixel  (2Ä­*8pixel)
+(0013) 
+(0014) Byte head_x = 5;    // snake head x
+(0015) Byte head_y = 0;    // snake head y
+(0016) Byte tail_x = 0;    // snake tail x
+(0017) Byte tail_y = 0;    // snake tail y
+(0018) 
+(0019) Byte dir_num = 0;
+(0020) Byte dx[4] = {0x01, 0x02, 0x00, 0x01};
+(0021) Byte dy[4] = {0x02, 0x01, 0x01, 0x00};
+(0022) Byte nx, ny;
+(0023) 
+(0024) Byte InRange(Byte x, Byte y) {
+(0025)     if (0 <= x && x < x_max && 0 <= y && y <= y_max) return 1;
+_InRange:
+  y                    --> R18
+  x                    --> R16
+    000AB 2422      CLR	R2
+    000AC 1502      CP	R16,R2
+    000AD F068      BCS	0x00BB
+    000AE 9020 0102 LDS	R2,_x_max
+    000B0 1502      CP	R16,R2
+    000B1 F448      BCC	0x00BB
+    000B2 2422      CLR	R2
+    000B3 1522      CP	R18,R2
+    000B4 F030      BCS	0x00BB
+    000B5 9020 0103 LDS	R2,_y_max
+    000B7 1622      CP	R2,R18
+    000B8 F010      BCS	0x00BB
+    000B9 E001      LDI	R16,1
+    000BA C001      RJMP	0x00BC
+(0026)     else return 0;
+    000BB 2700      CLR	R16
+    000BC 9508      RET
+(0027) }
+(0028) 
+(0029) void snake_handler(void) {
+(0030)     snake = (head_x - tail_x) +(head_y - tail_y);
+_snake_handler:
+    000BD 9020 0109 LDS	R2,_tail_y
+    000BF 9030 0107 LDS	R3,_head_y
+    000C1 1832      SUB	R3,R2
+    000C2 9020 0108 LDS	R2,_tail_x
+    000C4 9040 0106 LDS	R4,_head_x
+    000C6 1842      SUB	R4,R2
+    000C7 0C43      ADD	R4,R3
+    000C8 9240 0101 STS	_snake,R4
+    000CA 9508      RET
+(0031) }
+(0032) 
+(0033) #pragma interrupt_handler ext_int0_isr: iv_EXT_INT0
+(0034) 
+(0035) void ext_int0_isr(void) {
+_ext_int0_isr:
+    000CB 9518      RETI
+(0036) 
+(0037) }
+(0038) 
+(0039) #pragma interrupt_handler ext_int1_isr: iv_EXT_INT1
+(0040) 
+(0041) void ext_int1_isr(void) {
+_ext_int1_isr:
+    000CC 9518      RETI
+(0042) 
+(0043) }
+_ext_int7_isr:
+    000CD 922A      ST	-Y,R2
+    000CE 938A      ST	-Y,R24
+    000CF B62F      IN	R2,0x3F
+    000D0 922A      ST	-Y,R2
+(0044) 
+(0045) #pragma interrupt_handler ext_int7_isr: iv_EXT_INT7
+(0046) 
+(0047) void ext_int7_isr(void) {
+(0048)     flag ^= (1 << 0x01);    // game start, pause, resume button
+    000D1 E082      LDI	R24,2
+    000D2 9020 0100 LDS	R2,_flag
+    000D4 2628      EOR	R2,R24
+    000D5 9220 0100 STS	_flag,R2
+    000D7 9029      LD	R2,Y+
+    000D8 BE2F      OUT	0x3F,R2
+    000D9 9189      LD	R24,Y+
+    000DA 9029      LD	R2,Y+
+    000DB 9518      RETI
+(0049) }
+(0050) 
+(0051) void Interrupt_Init(void) {
+(0052)     SREG |= 0x80;
+_Interrupt_Init:
+    000DC 9478      BSET	7
+(0053)     EIMSK |= (1 << INT1) | (1 << INT0);
+    000DD B789      IN	R24,0x39
+    000DE 6083      ORI	R24,3
+    000DF BF89      OUT	0x39,R24
+(0054)     EICRA |= (1 << ISC11) | (1 << ISC01);
+    000E0 9180 006A LDS	R24,0x6A
+    000E2 608A      ORI	R24,0xA
+    000E3 9380 006A STS	0x6A,R24
+    000E5 9508      RET
+(0055) }
+(0056) 
+(0057) void main(void) {
+(0058)     DDRB = 0xFF;    // PORTB set to output
+_main:
+    000E6 EF8F      LDI	R24,0xFF
+    000E7 BB87      OUT	0x17,R24
+(0059)     PORTB = 0xFF;   // all LEDs turned off
+    000E8 BB88      OUT	0x18,R24
+(0060)     DDRD = 0x00;    // PORTD set to input (buttons)
+    000E9 2422      CLR	R2
+    000EA BA21      OUT	0x11,R2
+(0061) 
+(0062)     PortInit();
+    000EB 940E 013A CALL	_PortInit
+(0063)     LCD_Init();
+    000ED 940E 01C2 CALL	_LCD_Init
+(0064)     Interrupt_Init();
+    000EF DFEC      RCALL	_Interrupt_Init
+(0065) 
+(0066)     Cursor_Home();
+    000F0 940E 01DC CALL	_Cursor_Home
+(0067)     LCD_STR("Press PD7");
+    000F2 E10D      LDI	R16,0x1D
+    000F3 E011      LDI	R17,1
+    000F4 940E 019D CALL	_LCD_STR
+(0068)     LCD_pos(1,0);
+    000F6 2722      CLR	R18
+    000F7 E001      LDI	R16,1
+    000F8 940E 01AD CALL	_LCD_pos
+(0069)     LCD_STR("to begin!");
+    000FA E103      LDI	R16,0x13
+    000FB E011      LDI	R17,1
+    000FC 940E 019D CALL	_LCD_STR
+    000FE C004      RJMP	0x0103
+(0070) 
+(0071)     while (1) {
+(0072)         if ((PIND & 0x80) == 0) {
+    000FF 9987      SBIC	0x10,7
+    00100 C002      RJMP	0x0103
+(0073)             LCD_intro();    // display game intro
+    00101 940E 0105 CALL	_LCD_intro
+    00103 CFFB      RJMP	0x00FF
+    00104 9508      RET
+(0074)         }
+(0075) 
+(0076) 
+(0077) 
+(0078) 
+(0079)     }
+(0080) 
+(0081) }
+(0082) 
+    00104 9508      RET
+FILE: .\utils\intro.c
+(0001) #include "intro.h"
+(0002) 
+(0003) void LCD_intro(void) {
+(0004)     LCD_Clear();
+_LCD_intro:
+    00105 940E 01BD CALL	_LCD_Clear
+(0005)     Cursor_Home();
+    00107 940E 01DC CALL	_Cursor_Home
+(0006)     LCD_STR("3...");
+    00109 E306      LDI	R16,0x36
+    0010A E011      LDI	R17,1
+    0010B 940E 019D CALL	_LCD_STR
+(0007)     LCD_delay(500);
+    0010D EF04      LDI	R16,0xF4
+    0010E E011      LDI	R17,1
+    0010F 940E 0131 CALL	_LCD_delay
+(0008)     Cursor_Home();
+    00111 940E 01DC CALL	_Cursor_Home
+(0009)     LCD_STR("2...");
+    00113 E301      LDI	R16,0x31
+    00114 E011      LDI	R17,1
+    00115 940E 019D CALL	_LCD_STR
+(0010)     LCD_delay(500);
+    00117 EF04      LDI	R16,0xF4
+    00118 E011      LDI	R17,1
+    00119 940E 0131 CALL	_LCD_delay
+(0011)     Cursor_Home();
+    0011B 940E 01DC CALL	_Cursor_Home
+(0012)     LCD_STR("1...");
+    0011D E20C      LDI	R16,0x2C
+    0011E E011      LDI	R17,1
+    0011F 940E 019D CALL	_LCD_STR
+(0013)     LCD_delay(500);
+    00121 EF04      LDI	R16,0xF4
+    00122 E011      LDI	R17,1
+    00123 940E 0131 CALL	_LCD_delay
+(0014)     Cursor_Home();
+    00125 940E 01DC CALL	_Cursor_Home
+(0015)     LCD_STR("GO!!");
+    00127 E207      LDI	R16,0x27
+    00128 E011      LDI	R17,1
+    00129 940E 019D CALL	_LCD_STR
+(0016)     LCD_delay(500);
+    0012B EF04      LDI	R16,0xF4
+    0012C E011      LDI	R17,1
+    0012D 940E 0131 CALL	_LCD_delay
+    0012F 940C 01BD JMP	_LCD_Clear
+(0017)     LCD_Clear();
+(0018) 
+(0019) }
+_LCD_delay:
+  ms                   --> R10
+    00131 92AA      ST	-Y,R10
+    00132 92BA      ST	-Y,R11
+    00133 0158      MOVW	R10,R16
+    00132 92BA      ST	-Y,R11
+    00133 0158      MOVW	R10,R16
+FILE: .\utils\lcd.c
+(0001) #include "lcd.h"
+(0002) 
+(0003) void LCD_delay(unsigned int ms) {   // LCD time delay function
+(0004)     delay_ms(ms);
+    00134 0185      MOVW	R16,R10
+    00135 940E 01E1 CALL	_delay_ms
+    00137 90B9      LD	R11,Y+
+    00138 90A9      LD	R10,Y+
+    00139 9508      RET
+(0005) }
+(0006) 
+(0007) void PortInit(void) {       // PORT initiallization for LCD usage
+(0008)     DDRA = 0xFF;    // PORTA set to output
+_PortInit:
+    0013A EF8F      LDI	R24,0xFF
+    0013B BB8A      OUT	0x1A,R24
+(0009)     DDRG = 0x0F;    // PG~0 set to output
+    0013C E08F      LDI	R24,0xF
+    0013D 9380 0064 STS	0x64,R24
+    0013F 9508      RET
+(0010) }
+_LCD_Data:
+  ch                   --> R10
+    00140 92AA      ST	-Y,R10
+    00141 2EA0      MOV	R10,R16
+(0011) 
+(0012) void LCD_Data(Byte ch) {    // input data to Data Register function
+(0013)     LCD_CTRL |= (1 << LCD_RS);  // RS  = 1
+    00142 9180 0065 LDS	R24,0x65
+    00144 6084      ORI	R24,4
+    00145 9380 0065 STS	0x65,R24
+(0014)     LCD_CTRL &= ~(1 << LCD_RW); // R/W = 0, registers set for data input
+    00147 9180 0065 LDS	R24,0x65
+    00149 7F8D      ANDI	R24,0xFD
+    0014A 9380 0065 STS	0x65,R24
+(0015)     LCD_CTRL |= (1 << LCD_EN);  // EN  = 1, LCD enabled
+    0014C 9180 0065 LDS	R24,0x65
+    0014E 6081      ORI	R24,1
+    0014F 9380 0065 STS	0x65,R24
+(0016)     delay_us(50);               // time delay
+    00151 E302      LDI	R16,0x32
+    00152 E010      LDI	R17,0
+    00153 940E 01F8 CALL	_delay_us
+(0017) 
+(0018)     LCD_WDATA = ch;             // data output
+    00155 BAAB      OUT	0x1B,R10
+(0019)     delay_us(50);               // time delay
+    00156 E302      LDI	R16,0x32
+    00157 E010      LDI	R17,0
+    00158 940E 01F8 CALL	_delay_us
+(0020) 
+(0021)     LCD_CTRL &= ~(1 << LCD_EN); // EN  = 0, LCD disabled
+    0015A 9180 0065 LDS	R24,0x65
+    0015C 7F8E      ANDI	R24,0xFE
+    0015D 9380 0065 STS	0x65,R24
+    0015F 90A9      LD	R10,Y+
+    00160 9508      RET
+(0022) }
+_LCD_Comm:
+  ch                   --> R10
+    00161 92AA      ST	-Y,R10
+    00162 2EA0      MOV	R10,R16
+(0023) 
+(0024) void LCD_Comm(Byte ch) {    // input inst to Instruction Register function
+(0025)     LCD_CTRL &= ~(1 << LCD_RS); // RS  = 0
+    00163 9180 0065 LDS	R24,0x65
+    00165 7F8B      ANDI	R24,0xFB
+    00166 9380 0065 STS	0x65,R24
+(0026)     LCD_CTRL &= ~(1 << LCD_RW); // R/W = 0, registers set for inst input
+    00168 9180 0065 LDS	R24,0x65
+    0016A 7F8D      ANDI	R24,0xFD
+    0016B 9380 0065 STS	0x65,R24
+(0027)     LCD_CTRL |= (1 << LCD_EN);  // EN  = 1, LCD enabled
+    0016D 9180 0065 LDS	R24,0x65
+    0016F 6081      ORI	R24,1
+    00170 9380 0065 STS	0x65,R24
+(0028)     delay_us(50);               // time delay
+    00172 E302      LDI	R16,0x32
+    00173 E010      LDI	R17,0
+    00174 940E 01F8 CALL	_delay_us
+(0029) 
+(0030)     LCD_WINST = ch;             // inst input
+    00176 BAAB      OUT	0x1B,R10
+(0031)     delay_us(50);               // time delay
+    00177 E302      LDI	R16,0x32
+    00178 E010      LDI	R17,0
+    00179 940E 01F8 CALL	_delay_us
+(0032) 
+(0033)     LCD_CTRL &= ~(1 << LCD_EN); // EN  = 0, LCD disabled
+    0017B 9180 0065 LDS	R24,0x65
+    0017D 7F8E      ANDI	R24,0xFE
+    0017E 9380 0065 STS	0x65,R24
+    00180 90A9      LD	R10,Y+
+    00181 9508      RET
+(0034) }
+_LCD_Shift:
+  p                    --> R20
+    00182 934A      ST	-Y,R20
+    00183 2F40      MOV	R20,R16
+(0035) 
+(0036) void LCD_Shift(char p) {    // shift LCD screen to left or right
+(0037)     if (p == RIGHT) {
+    00184 3041      CPI	R20,1
+    00185 F429      BNE	0x018B
+(0038)         LCD_Comm(0x1C);     // switch from A to C
+    00186 E10C      LDI	R16,0x1C
+    00187 DFD9      RCALL	_LCD_Comm
+(0039)         LCD_delay(1);       // time delay
+    00188 E001      LDI	R16,1
+    00189 E010      LDI	R17,0
+    0018A DFA6      RCALL	_LCD_delay
+(0040)     }
+(0041) 
+(0042)     if (p == LEFT) {
+    0018B 2344      TST	R20
+    0018C F429      BNE	0x0192
+(0043)         LCD_Comm(0x18);
+    0018D E108      LDI	R16,0x18
+    0018E DFD2      RCALL	_LCD_Comm
+(0044)         LCD_delay(1);
+    0018F E001      LDI	R16,1
+    00190 E010      LDI	R17,0
+    00191 DF9F      RCALL	_LCD_delay
+    00192 9149      LD	R20,Y+
+    00193 9508      RET
+(0045)     }
+(0046) }
+_LCD_CHAR:
+  c                    --> R10
+    00194 92AA      ST	-Y,R10
+    00195 2EA0      MOV	R10,R16
+(0047) 
+(0048) void LCD_CHAR(Byte c) {     // print one character
+(0049)     LCD_delay(1);           // time delay (BF check)
+    00196 E001      LDI	R16,1
+    00197 E010      LDI	R17,0
+    00198 DF98      RCALL	_LCD_delay
+(0050)     LCD_Data(c);            // transmit data to DDRAM
+    00199 2D0A      MOV	R16,R10
+    0019A DFA5      RCALL	_LCD_Data
+    0019B 90A9      LD	R10,Y+
+    0019C 9508      RET
+(0051) }
+_LCD_STR:
+  str                  --> R20
+    0019D 934A      ST	-Y,R20
+    0019E 935A      ST	-Y,R21
+    0019F 01A8      MOVW	R20,R16
+(0052) 
+(0053) void LCD_STR(Byte *str) {   // print string
+    001A0 C005      RJMP	0x01A6
+(0054)     while(*str != 0) {
+(0055)         LCD_CHAR(*str);
+    001A1 01FA      MOVW	R30,R20
+    001A2 8100      LD	R16,Z
+    001A3 DFF0      RCALL	_LCD_CHAR
+(0056)         str++;
+    001A4 5F4F      SUBI	R20,0xFF
+    001A5 4F5F      SBCI	R21,0xFF
+    001A6 01FA      MOVW	R30,R20
+    001A7 8020      LD	R2,Z
+    001A8 2022      TST	R2
+    001A9 F7B9      BNE	0x01A1
+    001AA 9159      LD	R21,Y+
+    001AB 9149      LD	R20,Y+
+    001AC 9508      RET
+(0057)     }
+(0058) }
+_LCD_pos:
+  col                  --> R10
+  row                  --> R12
+    001AD 92AA      ST	-Y,R10
+    001AE 92CA      ST	-Y,R12
+    001AF 2EA2      MOV	R10,R18
+    001B0 2EC0      MOV	R12,R16
+(0059) 
+(0060) void LCD_pos(unsigned char row, unsigned char col) { // select output position
+(0061)     LCD_Comm(0x80 | (row * 0x40 + col));
+    001B1 2D2C      MOV	R18,R12
+    001B2 2733      CLR	R19
+    001B3 E400      LDI	R16,0x40
+    001B4 E010      LDI	R17,0
+    001B5 940E 020F CALL	<LIBRARY>|empy16s
+    001B7 0D0A      ADD	R16,R10
+    001B8 6800      ORI	R16,0x80
+    001B9 DFA7      RCALL	_LCD_Comm
+    001BA 90C9      LD	R12,Y+
+    001BB 90A9      LD	R10,Y+
+    001BC 9508      RET
+(0062) }
+(0063) 
+(0064) void LCD_Clear(void) {      // clear LCD
+(0065)     LCD_Comm(0x01);
+_LCD_Clear:
+    001BD E001      LDI	R16,1
+    001BE DFA2      RCALL	_LCD_Comm
+(0066)     LCD_delay(2);
+    001BF E002      LDI	R16,2
+    001C0 E010      LDI	R17,0
+    001C1 CF6F      RJMP	_LCD_delay
+(0067) }
+(0068) 
+(0069) void LCD_Init(void) {       // initiallize LCD
+(0070)     LCD_Comm(0x38);         // DDRAM, 8-bit data usage, use 2 columns
+_LCD_Init:
+    001C2 E308      LDI	R16,0x38
+    001C3 DF9D      RCALL	_LCD_Comm
+(0071)     LCD_delay(2);           // delay 2ms
+    001C4 E002      LDI	R16,2
+    001C5 E010      LDI	R17,0
+    001C6 DF6A      RCALL	_LCD_delay
+(0072)     LCD_Comm(0x38);         // DDRAM, 8-bit data usage, use 2 columns
+    001C7 E308      LDI	R16,0x38
+    001C8 DF98      RCALL	_LCD_Comm
+(0073)     LCD_delay(2);           // delay 2ms
+    001C9 E002      LDI	R16,2
+    001CA E010      LDI	R17,0
+    001CB DF65      RCALL	_LCD_delay
+(0074)     LCD_Comm(0x38);         // DDRAM, 8-bit data usage, use 2 columns
+    001CC E308      LDI	R16,0x38
+    001CD DF93      RCALL	_LCD_Comm
+(0075)     LCD_delay(2);           // delay 2ms
+    001CE E002      LDI	R16,2
+    001CF E010      LDI	R17,0
+    001D0 DF60      RCALL	_LCD_delay
+(0076) 
+(0077)     LCD_Comm(0x0C);         // display ON, cursor OFF, blink OFF
+    001D1 E00C      LDI	R16,0xC
+    001D2 DF8E      RCALL	_LCD_Comm
+(0078)     LCD_delay(2);           // delay 2ms
+    001D3 E002      LDI	R16,2
+    001D4 E010      LDI	R17,0
+    001D5 DF5B      RCALL	_LCD_delay
+(0079)     LCD_Comm(0x06);         // add 1 to address, move cursor to right
+    001D6 E006      LDI	R16,6
+    001D7 DF89      RCALL	_LCD_Comm
+(0080)     LCD_delay(2);           // delay 2ms
+    001D8 E002      LDI	R16,2
+    001D9 E010      LDI	R17,0
+    001DA DF56      RCALL	_LCD_delay
+    001DB CFE1      RJMP	_LCD_Clear
+(0081) 
+(0082)     LCD_Clear();            // clear LCD
+(0083) }
+(0084) 
+(0085) void Cursor_Home(void) {    // move cursor to (0, 0)
+(0086)     LCD_Comm(0x02);         // move cursor to home
+_Cursor_Home:
+    001DC E002      LDI	R16,2
+    001DD DF83      RCALL	_LCD_Comm
+(0087)     LCD_delay(2);           // delay 2ms
+    001DE E002      LDI	R16,2
+    001DF E010      LDI	R17,0
+    001E0 CF50      RJMP	_LCD_delay
+(0088) }
+_delay_ms:
+  i                    --> R20
+  j                    --> R22
+  m                    --> R16
+    001E1 940E 021F CALL	push_xgsetF000
+    001E2 021F      MULS	R17,R31
+FILE: .\utils\my128.c
+(0001) #include "my128.h"
+(0002) 
+(0003) void delay_ms(unsigned int m) {
+(0004)     unsigned int i, j;
+(0005) 
+(0006)     for (i = 0; i < m; i++)
+    001E3 2744      CLR	R20
+    001E4 2755      CLR	R21
+    001E5 C00C      RJMP	0x01F2
+(0007)         for (j = 0; j < 2130; j++)
+    001E6 2766      CLR	R22
+    001E7 2777      CLR	R23
+    001E8 C002      RJMP	0x01EB
+    001E9 5F6F      SUBI	R22,0xFF
+    001EA 4F7F      SBCI	R23,0xFF
+    001EB E582      LDI	R24,0x52
+    001EC E098      LDI	R25,0x8
+    001ED 1768      CP	R22,R24
+    001EE 0779      CPC	R23,R25
+    001EF F3C8      BCS	0x01E9
+    001F0 5F4F      SUBI	R20,0xFF
+    001F1 4F5F      SBCI	R21,0xFF
+    001F2 1740      CP	R20,R16
+    001F3 0751      CPC	R21,R17
+    001F4 F388      BCS	0x01E6
+    001F5 940C 0224 JMP	pop_xgsetF000
+    001F7 9508      RET
+(0008)             ;
+(0009) }
+_delay_us:
+  i                    --> R20
+  j                    --> R22
+  u                    --> R16
+    001F8 940E 021F CALL	push_xgsetF000
+(0010) 
+(0011) void delay_us(unsigned int u) {
+(0012)     unsigned int i, j;
+(0013) 
+(0014)     for (i = 0; i < u; i++)
+    001FA 2744      CLR	R20
+    001FB 2755      CLR	R21
+    001FC C00C      RJMP	0x0209
+(0015)         for (j = 0; j < 2; j++)
+    001FD 2766      CLR	R22
+    001FE 2777      CLR	R23
+    001FF C002      RJMP	0x0202
+    00200 5F6F      SUBI	R22,0xFF
+    00201 4F7F      SBCI	R23,0xFF
+    00202 E082      LDI	R24,2
+    00203 E090      LDI	R25,0
+    00204 1768      CP	R22,R24
+    00205 0779      CPC	R23,R25
+    00206 F3C8      BCS	0x0200
+    00207 5F4F      SUBI	R20,0xFF
+    00208 4F5F      SBCI	R21,0xFF
+    00209 1740      CP	R20,R16
+    0020A 0751      CPC	R21,R17
+    0020B F388      BCS	0x01FD
+    0020C 940C 0224 JMP	pop_xgsetF000
+    0020E 9508      RET
+(0016)             ;
+(0017) }
+<LIBRARY>|empy16s:
+    0020F 920A      ST	-Y,R0
+    00210 921A      ST	-Y,R1
+    00211 938A      ST	-Y,R24
+    00212 939A      ST	-Y,R25
+    00213 9F02      MUL	R16,R18
+    00214 01C0      MOVW	R24,R0
+    00215 9F12      MUL	R17,R18
+    00216 0D90      ADD	R25,R0
+    00217 9F03      MUL	R16,R19
+    00218 0D90      ADD	R25,R0
+    00219 018C      MOVW	R16,R24
+    0021A 9199      LD	R25,Y+
+    0021B 9189      LD	R24,Y+
+    0021C 9019      LD	R1,Y+
+    0021D 9009      LD	R0,Y+
+    0021E 9508      RET

@@ -1,0 +1,33 @@
+# depslib dependency file v1.0
+1763695201 source:c:\mpu_2025_2\snake-game\main.c
+	<iom128v.h>
+	"my128.h"
+	"lcd.h"
+	"intro.h"
+
+1759998206 c:\mpu_2025_2\my128.h
+
+1759998206 c:\mpu_2025_2\lcd.h
+	<iom128v.h>
+	"my128.h"
+
+1763626543 c:\mpu_2025_2\snake-game\utils\intro.h
+	<iom128v.h>
+	"my128.h"
+	"lcd.h"
+
+1759998206 c:\mpu_2025_2\snake-game\utils\my128.h
+
+1759998206 c:\mpu_2025_2\snake-game\utils\lcd.h
+	<iom128v.h>
+	"my128.h"
+
+1763695432 source:c:\mpu_2025_2\snake-game\utils\intro.c
+	"intro.h"
+
+1763624486 source:c:\mpu_2025_2\snake-game\utils\lcd.c
+	"lcd.h"
+
+1759998206 source:c:\mpu_2025_2\snake-game\utils\my128.c
+	"my128.h"
+
