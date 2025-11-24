@@ -28,7 +28,7 @@
 					<Add option="-MHasMul" />
 					<Add option="-MEnhanced" />
 					<Add option="-Wf-use_elpm" />
-					<Add option="-D__BUILD=11" />
+					<Add option="-D__BUILD=12" />
 					<Add directory=".." />
 					<Add directory="utils" />
 				</Compiler>
@@ -44,7 +44,7 @@
 					<Add option="-beeprom:0.4096" />
 					<Add option="-fihx_coff" />
 					<Add option="-S2" />
-					<Add option="-nb:11" />
+					<Add option="-nb:12" />
 					<Add library="catm128" />
 				</Linker>
 			</Target>
@@ -60,7 +60,7 @@
 			<Add option="-MHasMul" />
 			<Add option="-MEnhanced" />
 			<Add option="-Wf-use_elpm" />
-			<Add option="-D__BUILD=11" />
+			<Add option="-D__BUILD=12" />
 		</Compiler>
 		<Linker>
 			<Add option="-mATMega128" />
@@ -74,7 +74,7 @@
 			<Add option="-beeprom:0.4096" />
 			<Add option="-fihx_coff" />
 			<Add option="-S2" />
-			<Add option="-nb:11" />
+			<Add option="-nb:12" />
 			<Add library="catm128" />
 		</Linker>
 		<Unit filename="main.c">
