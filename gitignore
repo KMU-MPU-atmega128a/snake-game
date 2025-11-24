@@ -1,0 +1,14 @@
+*.bin
+*.cof
+*.dbg
+*.depend
+*.default
+*.elf
+*.hex
+*.lst
+*.mp
+*.aws
+
+.objs/
+
+hidden-catch
