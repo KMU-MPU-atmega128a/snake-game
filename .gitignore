@@ -12,5 +12,6 @@
 *.prj
 *.layout
 *.cbp
+/tmpcodes
 
 .objs/
