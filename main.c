@@ -1,12 +1,12 @@
 #include <iom128v.h>
 #include "my128.h"
 #include "lcd.h"
-#include "intro.h"
 
 Byte start_flag = 0;  // 0: default, pause / 1: playing
 Byte snake = 3; // snake length, used as score
+Byte food = 0;
 
-#define SNAKE_MAX_LENGTH 12
+#define SNAKE_MAX_LENGTH 13
 
 Byte dir = 0;
 
@@ -18,23 +18,35 @@ Byte dy[4] = {1, 0, 1, 2};
 #define X_MAX 80
 #define Y_MAX 16
 
+// 난이도 설정
+#define DIFF_NORMAL 1
+#define DIFF_HARD   2
+Byte diff = DIFF_HARD;
+
+// 일정 이동 횟수 후 속도 상승
+// NORMAL: 0.8s -> 0.5s (cnt > 1600 -> 1000)
+// HARD  : 0.3s -> 0.1s (cnt >  600 -> 200)
+#define NORMAL_SLOW 1600
+#define NORMAL_FAST 1000
+#define HARD_SLOW    600
+#define HARD_FAST    200
+unsigned int move_interval = NORMAL_SLOW;
+
 // pixel 단위 좌표 (0~79, 0~15)
-Byte x[X_MAX] = {0, };
-Byte y[Y_MAX] = {0, };
+Byte x[SNAKE_MAX_LENGTH] = {0, };
+Byte y[SNAKE_MAX_LENGTH] = {0, };
+// CLCD에서 뱀의 LCD 칸 좌표 (0~1, 0~15)
+Byte x_LCD[X_MAX] = {0, };
+Byte y_LCD[Y_MAX] = {0, };
+// CLCD에서 뱀의 pixel 단위 좌표 (0~4, 0~7)
+Byte x_pixel[X_MAX] = {0, };
+Byte y_pixel[Y_MAX] = {0, };
+
 // 먹이 좌표
 Byte food_x;
 Byte food_y;
 
-// CLCD상의 좌표 (0~1, 0~15)
-Byte x_LCD[X_MAX] = {0, };
-Byte y_LCD[Y_MAX] = {0, };
-
-// CLCD 한 칸에서의 pixel 단위 좌표 (0~4, 0~7)
-Byte x_pixel[X_MAX] = {0, };
-Byte y_pixel[Y_MAX] = {0, };
-
-
-unsigned int cnt = 0;
+volatile unsigned int cnt = 0;
 
 // snake 속도 조절
 #pragma interrupt_handler timer0_ovf_isr: iv_TIM0_OVF
@@ -50,7 +62,8 @@ void Init_Timer0(void) {
     TCNT0 = 6;
 }
 
-unsigned int rand = 0;
+// 난수 발생기로 TCNT2 사용
+volatile unsigned int rand = 0;
 
 #pragma interrupt_handler timer2_ovf_isr: iv_TIM2_OVF
 void timer2_ovf_isr(void) {
@@ -64,44 +77,80 @@ void Init_Timer2(void) {
     TCNT2 = 56;
 }
 
+// 장애물 좌표 생성
+#define MAX_OBSTACLES 9
+Byte obstacle_row[MAX_OBSTACLES] = {0, 1, 1, 0, 1, 0, 0, 1, 1};
+Byte obstacle_col[MAX_OBSTACLES] = {2, 4, 8, 10, 14, 1, 6, 12, 16};
+Byte obstacle_count = 0;
+
+void Obstacle_Init(void) {
+    // NORMAL: 5개, HARD: 10개
+    obstacle_count = (diff == DIFF_HARD) ? 9 : 5;
+    for (Byte i = 0; i < obstacle_count; i++) {
+        LCD_pos(obstacle_row[i], obstacle_col[i]);
+        LCD_Data('X');
+        LCD_delay(1);
+    }
+}
+
 void spawn_food(void) {
-    Byte rand_x, rand_y;
-    Byte is_on_snake = 0;
+    Byte rand_pixel_x, rand_pixel_y;
+    Byte error_flag = 0;
 
     do {
-        is_on_snake = 0;
+        error_flag = 0;
 
-        rand_x = rand % X_MAX;
-        rand_y = rand % Y_MAX;
+        rand_pixel_x = rand % X_MAX;
+        rand_pixel_y = rand % Y_MAX;
 
         for (Byte i = 0; i < snake; i++) {
-            if (x[i] == rand_x && y[i] == rand_y) {
-                is_on_snake = 1;
+            if (x[i] == rand_pixel_x && y[i] == rand_pixel_y) {
+                error_flag = 1;
                 break;
             }
         }
-    } while (is_on_snake);  // 안 겹칠 때까지 반복
+
+        if (error_flag == 0) {
+            Byte rand_LCD_x = rand_pixel_y / 8;
+            Byte rand_LCD_y = rand_pixel_x / 5;
+            if (diff == DIFF_NORMAL) {  // Normal 난이도 장애물 확인
+                for (Byte i = 0; i < obstacle_count; i++) {
+                    if (rand_LCD_x == obstacle_row[i] && rand_LCD_y == obstacle_col[i]) {
+                        error_flag = 1;
+                        break;
+                    }
+                }
+            }
+            else if (diff == DIFF_HARD) { // Hard 난이도 장애물 확인
+                for (Byte i = 0; i < obstacle_count; i++) {
+                    if (rand_LCD_x == obstacle_row[i] && rand_LCD_y == obstacle_col[i]) {
+                        error_flag = 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+    } while (error_flag);  // 안 겹칠 때까지 반복
 
     // food 위치 확정
-    food_x = rand_x;
-    food_y = rand_y;
+    food_x = rand_pixel_x;
+    food_y = rand_pixel_y;
 }
 
-void Snake_coords(void) {
+void Snake_generator(void) {
     for (Byte i = 0; i < snake; i++) {
         x_LCD[i] = y[i] / 0x08;
         y_LCD[i] = x[i] / 0x05;
         x_pixel[i] = x[i] % 0x05;
         y_pixel[i] = y[i] % 0x08;
     }
-}
 
-void Snake_generator(void) {
     Byte CGRAM_num = 0;
     Byte CGRAM_size = 1;
 
-    Byte snake_pos_x[8] = {0, };
-    Byte snake_pos_y[8] = {0, };
+    Byte snake_pos_x[8] = {0, };    // 사용할 CLCD 칸 좌표 (0~1) , CGRAM은 8칸
+    Byte snake_pos_y[8] = {0, };    // 사용할 CLCD 칸 좌표 (0~15), CGRAM은 8칸
 
     snake_pos_x[0] = x_LCD[0];
     snake_pos_y[0] = y_LCD[0];
@@ -117,7 +166,8 @@ void Snake_generator(void) {
                 break;
             }
         }
-        if (slot_found == 0) { // 새로운 칸인 경우
+
+        if (slot_found == 0) { // 새로운 칸에 그려야 하는 경우
             snake_pos_x[CGRAM_size] = x_LCD[i];
             snake_pos_y[CGRAM_size] = y_LCD[i];
             CGRAM_num = CGRAM_size;
@@ -136,7 +186,7 @@ void Snake_generator(void) {
     Byte food_CGRAM_num = 0;
     Byte food_slot_found = 0;
 
-    for (Byte i = 0; i < CGRAM_size; i++) {
+    for (Byte i = 0; i < CGRAM_size; i++) { // 이미 그린 칸에 먹이가 그려질 경우
         if (snake_pos_x[i] == food_LCD_x && snake_pos_y[i] == food_LCD_y) {
             food_CGRAM_num = i;
             food_slot_found = 1;
@@ -144,7 +194,7 @@ void Snake_generator(void) {
         }
     }
 
-    if (food_slot_found == 0) {
+    if (food_slot_found == 0) { // 새로운 CGRAM 칸에 그려질 경우
         food_CGRAM_num = CGRAM_size;
         snake_pos_x[food_CGRAM_num] = food_LCD_x;
         snake_pos_y[food_CGRAM_num] = food_LCD_y;
@@ -160,6 +210,9 @@ void Snake_generator(void) {
     }
 
     LCD_Clear();
+
+    Obstacle_Init();
+
     for (Byte i = 0; i < CGRAM_size; i++) {
         LCD_pos(snake_pos_x[i], snake_pos_y[i]);
         LCD_Data(0x00 + i);
@@ -176,6 +229,36 @@ void Snake_moveset(void) {
     // 상하 경계 확인
     if (ny == 0xFF) ny = Y_MAX - 1;
     else if (ny >= Y_MAX) ny = 0;
+
+    // 자기 몸과 충돌 검사
+    for (Byte i = 1; i < snake; i++) {
+        if (nx == x[i] && ny == y[i]) {
+            start_flag = 0;
+            return;
+        }
+    }
+
+    Byte head_x = ny / 0x08;    // 0~15 -> 0~1
+    Byte head_y = nx / 0x05;    // 0~79 -> 0~15
+
+    // 장애물 충돌 검사
+    if (diff == DIFF_NORMAL) {
+        for (Byte i = 0; i < obstacle_count; i++) {
+            if (head_x == obstacle_row[i] && head_y == obstacle_col[i]) {
+                start_flag = 0;
+                return;
+            }
+        }
+    }
+
+    else if (diff == DIFF_HARD) {
+        for (Byte i = 0; i < obstacle_count; i++) {
+            if (head_x == obstacle_row[i] && head_y == obstacle_col[i]) {
+                start_flag = 0;
+                return;
+            }
+        }
+    }
 
     // 꼬리 좌표 임시로 저장
     Byte tail_x = x[snake - 1];
@@ -196,6 +279,7 @@ void Snake_moveset(void) {
             y[snake] = tail_y;
             snake++;
         }
+        food++;
         spawn_food();
     }
 }
@@ -206,7 +290,8 @@ void Snake_Init(void) {
         x[i] = x_tmp--;
         y[i] = 0x07;
     }
-    Snake_coords();
+    Obstacle_Init();
+
     Snake_generator();
     spawn_food();
 }
@@ -247,8 +332,12 @@ void ext_int3_isr(void) {   // dir: right
 void Interrupt_Init(void) {
     EIMSK |= (1 << INT0) | (1 << INT1) | (1 << INT2) | (1 << INT3); // allow INT0~3
     EICRA |= (1 << ISC01) | (1 << ISC11) | (1 << ISC21) | (1 << ISC31); // trigger
+
     SREG |= 0x80;
 }
+
+unsigned int speed1 = 2000;
+unsigned int speed2 = 2000;
 
 void main(void) {
     DDRB = 0xFF;    // PORTB set to output (LED)
@@ -264,14 +353,33 @@ void main(void) {
 
     Cursor_Home();
 
+    if (diff == DIFF_NORMAL) move_interval = NORMAL_SLOW;
+    else                     move_interval = HARD_SLOW;
+
     Snake_Init();
+    start_flag = 1;
 
     while (1) {
-        if (cnt > 500) {
+        if (start_flag == 1 && (cnt > move_interval)) {
             cnt = 0;
+
             Snake_moveset();
-            Snake_coords();
+
+            if (start_flag == 0) {
+                PORTB = 0x00;
+                continue;
+            }
+
             Snake_generator();
+
+            if (food >= 5) {
+                if (diff == DIFF_NORMAL) move_interval = NORMAL_FAST;
+                else                     move_interval = HARD_FAST;
+            }
+            else {
+                if (diff == DIFF_NORMAL) move_interval = NORMAL_SLOW;
+                else                     move_interval = HARD_SLOW;
+            }
         }
 
     }
