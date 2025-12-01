@@ -78,14 +78,14 @@ void Init_Timer2(void) {
 }
 
 // 장애물 좌표 생성
-#define MAX_OBSTACLES 9
-Byte obstacle_row[MAX_OBSTACLES] = {0, 1, 1, 0, 1, 0, 0, 1, 1};
-Byte obstacle_col[MAX_OBSTACLES] = {2, 4, 8, 10, 14, 1, 6, 12, 16};
+#define MAX_OBSTACLES 10
+Byte obstacle_row[MAX_OBSTACLES] = {0, 1, 1, 0, 1, 0, 0, 1, 1, 1};
+Byte obstacle_col[MAX_OBSTACLES] = {2, 4, 8, 10, 14, 1, 6, 12, 16, 13};
 Byte obstacle_count = 0;
 
 void Obstacle_Init(void) {
     // NORMAL: 5개, HARD: 10개
-    obstacle_count = (diff == DIFF_HARD) ? 9 : 5;
+    obstacle_count = (diff == DIFF_HARD) ? MAX_OBSTACLES : 5;
     for (Byte i = 0; i < obstacle_count; i++) {
         LCD_pos(obstacle_row[i], obstacle_col[i]);
         LCD_Data('X');
