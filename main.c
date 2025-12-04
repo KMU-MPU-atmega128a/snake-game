@@ -2,6 +2,38 @@
 #include "my128.h"
 #include "lcd.h"
 
+Byte data = 0;
+Byte rxdata = 0;
+
+// 수신 완료 인터럽트
+#pragma interrupt_handler usart0_receive:iv_USART0_RXC
+void usart0_receive(void) {
+    rxdata = UDR0;
+}
+
+// asynchronous, x1, baud rate = 9,600bps, 8bit data, even parity, 1bit stop bit
+void Init_USART0(void) {
+    UCSR0A = 0x00; // 1x transfer rate
+
+    UCSR0B = (1 << RXEN0) | (1 << TXEN0) | (1 << RXCIE0);
+    // allow receive/transmit (RXEN0,TXEN0 = 1)
+
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+    // asyncrhonous (UMSEL0 = 0), even parity (UPM01,UPM00 = 10)
+    // 1bit stop bit (USBS0 = 0), 8bit data (UCSZ02~00 = 011)s
+
+    UBRR0H = 0x00;
+    UBRR0L = 0x67;
+    // baud rate = 9,600 bps
+
+    SREG |= 0x80;
+}
+
+void USART0_Transmit(Byte data) {
+    while (!(UCSR0A & (1 << UDRE0)));
+    UDR0 = data;
+}
+
 Byte start_flag = 0;  // 0: default, pause / 1: playing
 Byte snake = 3; // snake length, used as score
 Byte food = 0;
@@ -21,7 +53,7 @@ Byte dy[4] = {1, 0, 1, 2};
 // 난이도 설정
 #define DIFF_NORMAL 1
 #define DIFF_HARD   2
-Byte diff = DIFF_HARD;
+Byte diff = DIFF_NORMAL;
 
 // 일정 이동 횟수 후 속도 상승
 // NORMAL: 0.8s -> 0.5s (cnt > 1600 -> 1000)
@@ -77,21 +109,45 @@ void Init_Timer2(void) {
     TCNT2 = 56;
 }
 
+
 // 장애물 좌표 생성
 #define MAX_OBSTACLES 10
-Byte obstacle_row[MAX_OBSTACLES] = {0, 1, 1, 0, 1, 0, 0, 1, 1, 1};
-Byte obstacle_col[MAX_OBSTACLES] = {2, 4, 8, 10, 14, 1, 6, 12, 16, 13};
 Byte obstacle_count = 0;
 
 void Obstacle_Init(void) {
     // NORMAL: 5개, HARD: 10개
     obstacle_count = (diff == DIFF_HARD) ? MAX_OBSTACLES : 5;
-    for (Byte i = 0; i < obstacle_count; i++) {
-        LCD_pos(obstacle_row[i], obstacle_col[i]);
-        LCD_Data('X');
-        LCD_delay(1);
+    LCD_pos(0,2);  LCD_Data('X');
+    LCD_pos(1,4);  LCD_Data('X');
+    LCD_pos(1,8);  LCD_Data('X');
+    LCD_pos(0,10); LCD_Data('X');
+    LCD_pos(1,14); LCD_Data('X');
+
+    if (diff == DIFF_HARD) {
+        LCD_pos(0,1);  LCD_Data('X');
+        LCD_pos(0,6);  LCD_Data('X');
+        LCD_pos(1,12); LCD_Data('X');
+        LCD_pos(1,13); LCD_Data('X');
+        LCD_pos(1,15); LCD_Data('X');
     }
 }
+
+Byte is_obstacle(Byte x, Byte y) {
+    if ((x == 0 && y == 2) || (x == 1 && y == 4) || (x == 1 && y == 8) ||
+        (x == 0 && y == 10) || (x == 1 && y == 14) ) {
+        return 1;
+    }
+    // hard: 10 obstacles
+    if (diff == DIFF_HARD) {
+        if ((x == 0 && y == 1) || (x == 0 && y == 6) || (x == 1 && y == 12) ||
+            (x == 1 && y == 15) || (x == 1 && y == 13) ) {
+            return 1;
+        }
+    }
+
+    return 0; // 장애물 없음
+}
+
 
 void spawn_food(void) {
     Byte rand_pixel_x, rand_pixel_y;
@@ -113,21 +169,8 @@ void spawn_food(void) {
         if (error_flag == 0) {
             Byte rand_LCD_x = rand_pixel_y / 8;
             Byte rand_LCD_y = rand_pixel_x / 5;
-            if (diff == DIFF_NORMAL) {  // Normal 난이도 장애물 확인
-                for (Byte i = 0; i < obstacle_count; i++) {
-                    if (rand_LCD_x == obstacle_row[i] && rand_LCD_y == obstacle_col[i]) {
-                        error_flag = 1;
-                        break;
-                    }
-                }
-            }
-            else if (diff == DIFF_HARD) { // Hard 난이도 장애물 확인
-                for (Byte i = 0; i < obstacle_count; i++) {
-                    if (rand_LCD_x == obstacle_row[i] && rand_LCD_y == obstacle_col[i]) {
-                        error_flag = 1;
-                        break;
-                    }
-                }
+            if (is_obstacle(rand_LCD_x, rand_LCD_y)) {  // 장애물 확인
+                error_flag = 1;
             }
         }
 
@@ -194,7 +237,7 @@ void Snake_generator(void) {
         }
     }
 
-    if (food_slot_found == 0) { // 새로운 CGRAM 칸에 그려질 경우
+    if (food_slot_found == 0 && CGRAM_size < 8) { // 새로운 CGRAM 칸에 그려질 경우
         food_CGRAM_num = CGRAM_size;
         snake_pos_x[food_CGRAM_num] = food_LCD_x;
         snake_pos_y[food_CGRAM_num] = food_LCD_y;
@@ -242,22 +285,9 @@ void Snake_moveset(void) {
     Byte head_y = nx / 0x05;    // 0~79 -> 0~15
 
     // 장애물 충돌 검사
-    if (diff == DIFF_NORMAL) {
-        for (Byte i = 0; i < obstacle_count; i++) {
-            if (head_x == obstacle_row[i] && head_y == obstacle_col[i]) {
-                start_flag = 0;
-                return;
-            }
-        }
-    }
-
-    else if (diff == DIFF_HARD) {
-        for (Byte i = 0; i < obstacle_count; i++) {
-            if (head_x == obstacle_row[i] && head_y == obstacle_col[i]) {
-                start_flag = 0;
-                return;
-            }
-        }
+    if (is_obstacle(head_x, head_y)) {
+        start_flag = 0;
+        return;
     }
 
     // 꼬리 좌표 임시로 저장
@@ -286,12 +316,14 @@ void Snake_moveset(void) {
 
 void Snake_Init(void) {
     Byte x_tmp = 0x19;
+    snake = 3;
+    food  = 0;
     for (Byte i = 0; i < snake; i++) {
         x[i] = x_tmp--;
         y[i] = 0x07;
     }
-    Obstacle_Init();
 
+    Obstacle_Init();
     Snake_generator();
     spawn_food();
 }
@@ -331,13 +363,9 @@ void ext_int3_isr(void) {   // dir: right
 
 void Interrupt_Init(void) {
     EIMSK |= (1 << INT0) | (1 << INT1) | (1 << INT2) | (1 << INT3); // allow INT0~3
-    EICRA |= (1 << ISC01) | (1 << ISC11) | (1 << ISC21) | (1 << ISC31); // trigger
-
+    EICRA |= (1 << ISC01) | (1 << ISC11) | (1 << ISC21) | (1 << ISC31); // falling edge trigger
     SREG |= 0x80;
 }
-
-unsigned int speed1 = 2000;
-unsigned int speed2 = 2000;
 
 void main(void) {
     DDRB = 0xFF;    // PORTB set to output (LED)
@@ -350,29 +378,34 @@ void main(void) {
     Interrupt_Init();
     Init_Timer0();
     Init_Timer2();
+    Init_USART0();
 
     Cursor_Home();
 
-    if (diff == DIFF_NORMAL) move_interval = NORMAL_SLOW;
-    else                     move_interval = HARD_SLOW;
-
     Snake_Init();
-    start_flag = 1;
+    start_flag = 0;
 
     while (1) {
-        if (start_flag == 1 && (cnt > move_interval)) {
-            cnt = 0;
+        Byte received_diff = rxdata;
 
-            Snake_moveset();
-
-            if (start_flag == 0) {
-                PORTB = 0x00;
-                continue;
+        if (start_flag == 0) {
+            if (received_diff == '1') {
+                diff = DIFF_NORMAL;
+                Snake_Init();
+                start_flag = 1;
             }
+            else if (received_diff == '2') {
+                diff = DIFF_HARD;
+                Snake_Init();
+                start_flag = 1;
+            }
+        }
 
-            Snake_generator();
-
+        if (start_flag == 1) {
+            // 뱀 속도 조절
             if (food >= 5) {
+                USART0_Transmit('F');   // send 'F' as in fever time
+
                 if (diff == DIFF_NORMAL) move_interval = NORMAL_FAST;
                 else                     move_interval = HARD_FAST;
             }
@@ -380,8 +413,30 @@ void main(void) {
                 if (diff == DIFF_NORMAL) move_interval = NORMAL_SLOW;
                 else                     move_interval = HARD_SLOW;
             }
+
+            if (cnt > move_interval) {
+                cnt = 0;
+                Snake_moveset();    // 뱀 이동
+
+                if (food == 10) {   // 먹이 10개 먹어서 game clear
+                    USART0_Transmit('C');
+                    start_flag = 0;
+                }
+
+
+                if (start_flag == 0) {  // 벽이나 자신의 몸에 부딪혀서 game over
+                    PORTB = 0x00;
+                    // 게임 종료 신호 전송 (END)
+                    USART0_Transmit('L');
+
+                    // 게임 재시작을 위해 rxdata 0으로 초기화해 난이도 남아있는 걸 방지
+                    rxdata = 0;
+                    continue;
+                }
+
+                // 오류 없으면 LCD에 이동된 뱀 그리기
+                Snake_generator();
+            }
         }
-
     }
-
 }
