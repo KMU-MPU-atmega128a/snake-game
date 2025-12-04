@@ -29,13 +29,14 @@ void Init_USART0(void) {
     SREG |= 0x80;
 }
 
+// 송신에는 polling 사용
 void USART0_Transmit(Byte data) {
     while (!(UCSR0A & (1 << UDRE0)));
     UDR0 = data;
 }
 
 Byte start_flag = 0;  // 0: default, pause / 1: playing
-Byte snake = 3; // snake length, used as score
+Byte snake = 3; // snake length
 Byte food = 0;
 
 #define SNAKE_MAX_LENGTH 13
@@ -70,7 +71,7 @@ Byte y[SNAKE_MAX_LENGTH] = {0, };
 // CLCD에서 뱀의 LCD 칸 좌표 (0~1, 0~15)
 Byte x_LCD[X_MAX] = {0, };
 Byte y_LCD[Y_MAX] = {0, };
-// CLCD에서 뱀의 pixel 단위 좌표 (0~4, 0~7)
+// CLCD 한 칸에서 뱀의 pixel 단위 좌표 (0~4, 0~7)
 Byte x_pixel[X_MAX] = {0, };
 Byte y_pixel[Y_MAX] = {0, };
 
@@ -78,9 +79,9 @@ Byte y_pixel[Y_MAX] = {0, };
 Byte food_x;
 Byte food_y;
 
+// snake 속도 조절용 변수
 volatile unsigned int cnt = 0;
 
-// snake 속도 조절
 #pragma interrupt_handler timer0_ovf_isr: iv_TIM0_OVF
 void timer0_ovf_isr(void) {
     TCNT0 = 6;
@@ -109,8 +110,7 @@ void Init_Timer2(void) {
     TCNT2 = 56;
 }
 
-
-// 장애물 좌표 생성
+// 장애물 생성
 #define MAX_OBSTACLES 10
 Byte obstacle_count = 0;
 
@@ -132,6 +132,7 @@ void Obstacle_Init(void) {
     }
 }
 
+// 해당 위치에 장애물이 있는지 확인하는 함수
 Byte is_obstacle(Byte x, Byte y) {
     if ((x == 0 && y == 2) || (x == 1 && y == 4) || (x == 1 && y == 8) ||
         (x == 0 && y == 10) || (x == 1 && y == 14) ) {
@@ -148,7 +149,7 @@ Byte is_obstacle(Byte x, Byte y) {
     return 0; // 장애물 없음
 }
 
-
+// 무작위 위치에 먹이 생성하는 함수
 void spawn_food(void) {
     Byte rand_pixel_x, rand_pixel_y;
     Byte error_flag = 0;
@@ -156,9 +157,11 @@ void spawn_food(void) {
     do {
         error_flag = 0;
 
+        // 난수 생성 (pixel 상 x(0~79), y(0~15) 좌표
         rand_pixel_x = rand % X_MAX;
         rand_pixel_y = rand % Y_MAX;
 
+        // 먹이가 생성된 위치에 뱀이 그려져 있는지 확인
         for (Byte i = 0; i < snake; i++) {
             if (x[i] == rand_pixel_x && y[i] == rand_pixel_y) {
                 error_flag = 1;
@@ -166,21 +169,23 @@ void spawn_food(void) {
             }
         }
 
+        // 먹이가 생성된 LCD의 칸에 장애물이 있는지 확인 (x: 0~1, y: 0~15)
         if (error_flag == 0) {
             Byte rand_LCD_x = rand_pixel_y / 8;
             Byte rand_LCD_y = rand_pixel_x / 5;
-            if (is_obstacle(rand_LCD_x, rand_LCD_y)) {  // 장애물 확인
+            if (is_obstacle(rand_LCD_x, rand_LCD_y)) {
                 error_flag = 1;
             }
         }
 
-    } while (error_flag);  // 안 겹칠 때까지 반복
+    } while (error_flag);  // 생성할 수 있는 위치를 찾을 때까지 반복
 
-    // food 위치 확정
+    // 생성할 먹이 위치 확정
     food_x = rand_pixel_x;
     food_y = rand_pixel_y;
 }
 
+// 뱀과 먹이를 CGRAM에 그리는 함수
 void Snake_generator(void) {
     for (Byte i = 0; i < snake; i++) {
         x_LCD[i] = y[i] / 0x08;
@@ -189,91 +194,103 @@ void Snake_generator(void) {
         y_pixel[i] = y[i] % 0x08;
     }
 
-    Byte CGRAM_num = 0;
-    Byte CGRAM_size = 1;
+    Byte CGRAM_num = 0;     // 현재 그리고 있는 CGRAM 번호 (0~8)
+    Byte CGRAM_size = 1;    // 사용한 CGRAM 칸 수
 
-    Byte snake_pos_x[8] = {0, };    // 사용할 CLCD 칸 좌표 (0~1) , CGRAM은 8칸
-    Byte snake_pos_y[8] = {0, };    // 사용할 CLCD 칸 좌표 (0~15), CGRAM은 8칸
+    Byte snake_pos_x[8] = {0, };    // 그림 그려질  CLCD 칸 좌표 (0~1) , CGRAM은 8칸
+    Byte snake_pos_y[8] = {0, };    // 그림 그려질  CLCD 칸 좌표 (0~15), CGRAM은 8칸
 
+    // 뱀의 머리 그려질 좌표 첫 번째 인덱스에 저장
     snake_pos_x[0] = x_LCD[0];
     snake_pos_y[0] = y_LCD[0];
 
+    // CGRAM 작성에 사용할 배열 (한 칸당 8줄 * 8칸)
     Byte CGRAM_data[64] = {0, };
 
     for (Byte i = 0; i < snake; i++) {
         Byte slot_found = 0;
+        // 이미 뱀이나 먹이가 그려진 칸이 있는 좌표인 경우, 사용중인 CGRAM 칸에 이어서 작성
         for (Byte j = 0; j < CGRAM_size; j++) {
-            if (snake_pos_x[j] == x_LCD[i] && snake_pos_y[j] == y_LCD[i]) {   // 이미 그린 칸이 있는 좌표인 경우
+            if (snake_pos_x[j] == x_LCD[i] && snake_pos_y[j] == y_LCD[i]) {
                 CGRAM_num = j;
                 slot_found = 1;
                 break;
             }
         }
 
-        if (slot_found == 0) { // 새로운 칸에 그려야 하는 경우
+        // 새로운 칸에 뱀이나 먹이를 그려야 하는 경우, 새로운 CGRAM 칸에 작성
+        if (slot_found == 0) {
             snake_pos_x[CGRAM_size] = x_LCD[i];
             snake_pos_y[CGRAM_size] = y_LCD[i];
             CGRAM_num = CGRAM_size;
             CGRAM_size++;
         }
-
-        CGRAM_data[CGRAM_num * 8 + y_pixel[i]] |= (0x10 >> x_pixel[i]); // 해당 칸, 행, 열에 그릴 그림 저장 (OR)
-
+        // 해당 칸, 행, 열에 뱀 그림 저장 (OR 연산으로 뱀의 각 좌표가 다 그려질 수 있도록)
+        CGRAM_data[CGRAM_num * 8 + y_pixel[i]] |= (0x10 >> x_pixel[i]);
     }
 
+    // 먹이 그리기
     Byte food_LCD_x = food_y / 0x08;
     Byte food_LCD_y = food_x / 0x05;
     Byte food_pixel_x = food_x % 0x05;
     Byte food_pixel_y = food_y % 0x08;
 
+    // 먹이 그릴 CGRAM 좌표
     Byte food_CGRAM_num = 0;
+    // 먹이 그릴 CGRAM 좌표 새로 써야할 경우 0, 이미 뱀이 그려진 좌표에 그릴 경우 1
     Byte food_slot_found = 0;
 
-    for (Byte i = 0; i < CGRAM_size; i++) { // 이미 그린 칸에 먹이가 그려질 경우
+    // 이미 뱀을 그린 칸에 먹이가 그려질 경우
+    for (Byte i = 0; i < CGRAM_size; i++) {
         if (snake_pos_x[i] == food_LCD_x && snake_pos_y[i] == food_LCD_y) {
             food_CGRAM_num = i;
             food_slot_found = 1;
             break;
         }
     }
-
-    if (food_slot_found == 0 && CGRAM_size < 8) { // 새로운 CGRAM 칸에 그려질 경우
+    // 새로운 CGRAM 칸에 먹이가 그려질 경우
+    if (food_slot_found == 0 && CGRAM_size < 8) {
         food_CGRAM_num = CGRAM_size;
         snake_pos_x[food_CGRAM_num] = food_LCD_x;
         snake_pos_y[food_CGRAM_num] = food_LCD_y;
         CGRAM_size++;
     }
+    // CGRAM에 먹이 그리기
+    CGRAM_data[food_CGRAM_num * 8 + food_pixel_y] |= (0x10 >> food_pixel_x);
 
-    CGRAM_data[food_CGRAM_num * 8 + food_pixel_y] |= (0x10 >> food_pixel_x);    // CGRAM에 먹이 그리기
-
-    // 저장한 56개의 줄 전부 그리기
+    // 저장한 64개의 배열 CGRAM에 옮기기
     LCD_Comm(0x40);
     for (Byte i = 0; i < 64; i++) {
         LCD_Data(CGRAM_data[i]);
     }
 
+    // 뱀 그릴 준비 완료, LCD 비우기
     LCD_Clear();
 
+    // 장애물 그리기
     Obstacle_Init();
 
+    // CGRAM에 저장된 뱀과 먹이 그리기
     for (Byte i = 0; i < CGRAM_size; i++) {
         LCD_pos(snake_pos_x[i], snake_pos_y[i]);
         LCD_Data(0x00 + i);
     }
 }
 
+// 뱀 좌표 이동 함수
 void Snake_moveset(void) {
+    // 뱀의 머리가 이동할 다음 자리 미리 저장
     Byte nx = x[0] + dx[dir] - 1;
     Byte ny = y[0] + dy[dir] - 1;
 
-    // 좌우 경계 확인
+    // 좌우 경계 확인 (반대로 이동)
     if (nx == 0xFF) nx = X_MAX - 1;
     else if (nx >= X_MAX) nx = 0;
-    // 상하 경계 확인
+    // 상하 경계 확인 (반대로 이동)
     if (ny == 0xFF) ny = Y_MAX - 1;
     else if (ny >= Y_MAX) ny = 0;
 
-    // 자기 몸과 충돌 검사
+    // 뱀의 머리가 자기 몸과 충돌하는지 확인
     for (Byte i = 1; i < snake; i++) {
         if (nx == x[i] && ny == y[i]) {
             start_flag = 0;
@@ -284,25 +301,29 @@ void Snake_moveset(void) {
     Byte head_x = ny / 0x08;    // 0~15 -> 0~1
     Byte head_y = nx / 0x05;    // 0~79 -> 0~15
 
-    // 장애물 충돌 검사
+    // 뱀의 머리가 장애물이 그려진 좌표와 동일한 곳에 그려지는 지 검사
     if (is_obstacle(head_x, head_y)) {
         start_flag = 0;
         return;
     }
 
-    // 꼬리 좌표 임시로 저장
+    // 뱀 꼬리 좌표 임시 저장
     Byte tail_x = x[snake - 1];
     Byte tail_y = y[snake - 1];
 
+    // 뱀을 한 칸씩 앞으로 이동
     for (Byte i = snake - 1; i >= 1; i--) {
         x[i] = x[i - 1];
         y[i] = y[i - 1];
     }
 
+    // 뱀 머리 좌표 update
     x[0] = nx;
     y[0] = ny;
 
     // 먹이 먹었는지 확인
+    // 먹었을 경우 이전에 저장해둔 꼬리 좌표에 뱀 한칸 더 생성
+    // 새로운 먹이 생성
     if (x[0] == food_x && y[0] == food_y) {
         if (snake < SNAKE_MAX_LENGTH) {
             x[snake] = tail_x;
@@ -314,6 +335,7 @@ void Snake_moveset(void) {
     }
 }
 
+// 게임 시작 시 뱀 초기화 함수, 정해진 좌표에서 시작
 void Snake_Init(void) {
     Byte x_tmp = 0x19;
     snake = 3;
@@ -328,7 +350,8 @@ void Snake_Init(void) {
     spawn_food();
 }
 
-void LED_blink(void) {  // LED blinker for invalid inputs
+// LED blinker for invalid inputs
+void LED_blink(void) {
     for (Byte i = 0; i < 2; i++) {
         PORTB = 0x00;
         delay_ms(50);
@@ -373,6 +396,7 @@ void main(void) {
 
     DDRD = 0x00;    // PORTD set to input (buttons)
 
+    // 초기화 함수
     PortInit();
     LCD_Init();
     Interrupt_Init();
@@ -386,15 +410,18 @@ void main(void) {
     start_flag = 0;
 
     while (1) {
+        // MPU2에서 송신한 난이도 신호 수신 ('1' : NORMAL, '2': HARD)
         Byte received_diff = rxdata;
 
         if (start_flag == 0) {
             if (received_diff == '1') {
+                // 난이도 NORMAL로 설정 및 게임 시작
                 diff = DIFF_NORMAL;
                 Snake_Init();
                 start_flag = 1;
             }
             else if (received_diff == '2') {
+                // 난이도 HARD로 설정 및 게임 시작
                 diff = DIFF_HARD;
                 Snake_Init();
                 start_flag = 1;
@@ -421,6 +448,7 @@ void main(void) {
                 if (food == 10) {   // 먹이 10개 먹어서 game clear
                     USART0_Transmit('C');
                     start_flag = 0;
+                    return;
                 }
 
 
